@@ -9,13 +9,20 @@ public interface PathFinder {
 
     List<Position> findPath(Board board, Position start, Position goal);
 
+    static List<Position> reconstructPath(Map<Position, Position> cameFrom, Position current) {
+        List<Position> path = new LinkedList<>();
+        for (Position node = current; node != null; node = cameFrom.get(node))
+            path.add(0, node);
+        return path;
+    }
+
     class AStar implements PathFinder {
+
+        private record Node(Position pos, int g, int h) {}
 
         @Override
         public List<Position> findPath(Board board, Position start, Position goal) {
-            PriorityQueue<Node> openSet = new PriorityQueue<>(
-                Comparator.comparingInt(n -> n.g + n.h)
-            );
+            PriorityQueue<Node> openSet = new PriorityQueue<>(Comparator.comparingInt(n -> n.g + n.h));
             Set<Position> closedSet = new HashSet<>();
             Map<Position, Position> cameFrom = new HashMap<>();
             Map<Position, Integer> gScore = new HashMap<>();
@@ -26,39 +33,21 @@ public interface PathFinder {
             while (!openSet.isEmpty()) {
                 Node current = openSet.poll();
                 Position pos = current.pos;
-
-                if (pos.equals(goal)) {
-                    return reconstructPath(cameFrom, pos);
-                }
-
+                if (pos.equals(goal)) return reconstructPath(cameFrom, pos);
                 closedSet.add(pos);
 
-                for (Position neighbor : board.getNeighbors(pos)) {
-                    if (closedSet.contains(neighbor)) continue;
-
-                    int tentativeG = gScore.get(pos) + 1;
-
-                    if (!gScore.containsKey(neighbor) || tentativeG < gScore.get(neighbor)) {
-                        cameFrom.put(neighbor, pos);
-                        gScore.put(neighbor, tentativeG);
-                        int f = tentativeG + neighbor.chebyshevDistance(goal);
-                        openSet.add(new Node(neighbor, tentativeG, f));
-                    }
-                }
+                board.getNeighbors(pos).stream()
+                    .filter(n -> !closedSet.contains(n))
+                    .forEach(n -> {
+                        int tentativeG = gScore.get(pos) + 1;
+                        if (!gScore.containsKey(n) || tentativeG < gScore.get(n)) {
+                            cameFrom.put(n, pos);
+                            gScore.put(n, tentativeG);
+                            openSet.add(new Node(n, tentativeG, tentativeG + n.chebyshevDistance(goal)));
+                        }
+                    });
             }
             return Collections.emptyList();
-        }
-
-        private record Node(Position pos, int g, int h) {}
-
-        private List<Position> reconstructPath(Map<Position, Position> cameFrom, Position current) {
-            List<Position> path = new LinkedList<>();
-            Position node = current;
-            while (node != null) {
-                path.add(0, node);
-                node = cameFrom.get(node);
-            }
-            return path;
         }
     }
 
@@ -76,30 +65,17 @@ public interface PathFinder {
 
             while (!queue.isEmpty()) {
                 Position current = queue.poll();
+                if (current.equals(goal)) return reconstructPath(cameFrom, current);
 
-                if (current.equals(goal)) {
-                    return reconstructPath(cameFrom, current);
-                }
-
-                for (Position neighbor : board.getNeighbors(current)) {
-                    if (!visited.contains(neighbor)) {
-                        visited.add(neighbor);
-                        cameFrom.put(neighbor, current);
-                        queue.add(neighbor);
-                    }
-                }
+                board.getWalkableNeighbors(current).stream()
+                    .filter(n -> !visited.contains(n))
+                    .forEach(n -> {
+                        visited.add(n);
+                        cameFrom.put(n, current);
+                        queue.add(n);
+                    });
             }
             return Collections.emptyList();
-        }
-
-        private List<Position> reconstructPath(Map<Position, Position> cameFrom, Position current) {
-            List<Position> path = new LinkedList<>();
-            Position node = current;
-            while (node != null) {
-                path.add(0, node);
-                node = cameFrom.get(node);
-            }
-            return path;
         }
     }
 }

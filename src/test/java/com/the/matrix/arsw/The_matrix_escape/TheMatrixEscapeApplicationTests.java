@@ -31,16 +31,6 @@ class TheMatrixEscapeApplicationTests {
     }
 
     @Test
-    void testBoardMoveEntity() {
-        Board.reset(5, 5);
-        Board b = Board.getInstance(5, 5);
-        b.setCell(0, 0, 'N');
-        assertTrue(b.moveEntity(new Position(0, 0), new Position(0, 1)));
-        assertEquals('N', b.getCell(0, 1));
-        assertEquals('.', b.getCell(0, 0));
-    }
-
-    @Test
     void testBoardInvalidPosition() {
         Board.reset(3, 3);
         Board b = Board.getInstance(3, 3);

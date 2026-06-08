@@ -5,336 +5,173 @@ import com.the.matrix.arsw.The_matrix_escape.engine.GameEngine.Direction;
 import com.the.matrix.arsw.The_matrix_escape.engine.GameEngine.GameConfig;
 import com.the.matrix.arsw.The_matrix_escape.engine.GameEngine.GameState;
 
-import java.util.Scanner;
+import java.util.*;
+import java.util.stream.*;
+
+import static com.the.matrix.arsw.The_matrix_escape.engine.GameEngine.*;
 
 public class TheMatrixEscapeApplication {
 
     private static final GameEngine engine = new GameEngine();
     private static final Scanner scanner = new Scanner(System.in);
 
-    private static final String R = "\u001B[0m";
-    private static final String GREEN = "\u001B[92m";
-    private static final String RED = "\u001B[91m";
-    private static final String BLUE = "\u001B[94m";
-    private static final String GRAY = "\u001B[90m";
-    private static final String YELLOW = "\u001B[93m";
-    private static final String CYAN = "\u001B[96m";
-    private static final String BOLD = "\u001B[1m";
-    private static final String CLEAR = "\033[H\033[2J";
+    private static final String R = "\u001B[0m", GREEN = "\u001B[92m", RED = "\u001B[91m";
+    private static final String BLUE = "\u001B[94m", GRAY = "\u001B[90m", YELLOW = "\u001B[93m", CYAN = "\u001B[96m", BOLD = "\u001B[1m", CLS = "\033[H\033[2J";
 
     public static void main(String[] args) {
-        welcomeScreen();
-
-        GameConfig config = askConfiguration();
+        welcome();
+        GameConfig config = askConfig();
         engine.start(config);
-
-        if (config.mode().equals("SIMULATION")) {
-            runSimulation();
-        } else {
-            runPlayable();
-        }
+        if (config.mode().equals("SIMULATION")) simLoop(); else playLoop();
     }
 
-    private static void welcomeScreen() {
-        System.out.print(CLEAR);
-        System.out.println(BOLD + CYAN);
-        System.out.println("  ╔══════════════════════════════════════════╗");
-        System.out.println("  ║       MATRIX - EL ESCAPE                ║");
-        System.out.println("  ║   Neo debe escapar al teléfono...       ║");
-        System.out.println("  ║   ...antes de que los Agentes lo atrapen║");
-        System.out.println("  ╚══════════════════════════════════════════╝");
-        System.out.println(R);
+    private static void welcome() {
+        System.out.print(CLS);
+        System.out.println(BOLD + CYAN + """
+  ╔══════════════════════════════════════════╗
+  ║       MATRIX - EL ESCAPE                ║
+  ║   Neo debe escapar al teléfono...       ║
+  ║   ...antes de que los Agentes lo atrapen║
+  ╚══════════════════════════════════════════╝""" + R);
         sleep(1500);
     }
 
-    private static GameConfig askConfiguration() {
-        System.out.print(CLEAR);
-        System.out.println(BOLD + YELLOW + "⚙ CONFIGURACIÓN DE PARTIDA" + R + "\n");
-
-        int rows = readInt("Filas (defecto 8): ", 8);
-        int cols = readInt("Columnas (defecto 8): ", 8);
-        int agents = readInt("Cantidad de Agentes (defecto 2): ", 2);
-        int phones = readInt("Cantidad de Teléfonos (defecto 1): ", 1);
-        int walls = readInt("Cantidad de Muros (defecto 10): ", 10);
-        String mode = readMode();
-
-        return new GameConfig(rows, cols, agents, phones, walls, mode);
+    private static GameConfig askConfig() {
+        System.out.print(CLS + BOLD + YELLOW + "⚙ CONFIGURACIÓN" + R + "\n");
+        return new GameConfig(
+            readInt("Filas (8): ", 8), readInt("Columnas (8): ", 8),
+            readInt("Agentes (2): ", 2), readInt("Teléfonos (1): ", 1),
+            readInt("Muros (10): ", 10), readMode()
+        );
     }
 
-    private static int readInt(String prompt, int defaultValue) {
-        System.out.print(prompt);
-        String line = scanner.nextLine().trim();
-        if (line.isEmpty()) return defaultValue;
-        try {
-            return Integer.parseInt(line);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
+    private static int readInt(String p, int def) {
+        System.out.print(p);
+        try { return Integer.parseInt(scanner.nextLine().trim()); } catch (Exception e) { return def; }
     }
 
     private static String readMode() {
-        System.out.println("\nModo de juego:");
-        System.out.println("  1 - " + GREEN + "Jugable" + R + " (controlas a Neo con teclado)");
-        System.out.println("  2 - " + CYAN + "Simulación" + R + " (Neo huye automáticamente con A*)");
-        System.out.print("Elige (1/2, defecto 1): ");
-        String line = scanner.nextLine().trim();
-        return line.equals("2") ? "SIMULATION" : "PLAYABLE";
+        System.out.print(("\n1-" + GREEN + "Jugable" + R + "  2-" + CYAN + "Simulación" + R + "\nModo (1): "));
+        return scanner.nextLine().trim().equals("2") ? "SIMULATION" : "PLAYABLE";
     }
 
-    private static void runPlayable() {
-        System.out.println();
-        System.out.println(BOLD + GREEN + "🎮 MODO JUGABLE" + R);
-        System.out.println("  Controles:  " + YELLOW + "W/A/S/D" + R + " ortogonal  |  " + YELLOW + "Q/E/Z/X" + R + " diagonal");
-        System.out.println("  Salir: " + YELLOW + "K" + R + "  |  Pausar: " + YELLOW + "P" + R);
-        System.out.println(YELLOW + "\nPresiona Enter para empezar..." + R);
-        try { scanner.nextLine(); } catch (Exception e) { }
+    private static void playLoop() {
+        System.out.println(BOLD + GREEN + "\n🎮 JUGABLE  " + R + "WASD ortogonal | Q/E/Z/X diagonal | K=salir | P=pausa" + YELLOW + "\nEnter..." + R);
+        try { scanner.nextLine(); } catch (Exception e) {}
 
         while (true) {
             render();
+            if (!engine.getState().status().equals("PLAYING")) return;
 
-            GameState state = engine.getState();
-            if (!state.status().equals("PLAYING")) {
-                return;
-            }
+            String in = scanner.nextLine().trim().toLowerCase();
+            if (in.equals("k")) { System.out.println(YELLOW + "Adiós." + R); return; }
+            if (in.equals("p")) { System.out.println(YELLOW + "Pausa. Enter..." + R); scanner.nextLine(); continue; }
 
-            System.out.print("\n" + GREEN + "➤ Dirección: " + R);
-            String input = scanner.nextLine().trim().toLowerCase();
+            Direction dir = switch (in) {
+                case "w","8" -> Direction.UP; case "s","2" -> Direction.DOWN; case "a","4" -> Direction.LEFT; case "d","6" -> Direction.RIGHT;
+                case "q","7" -> Direction.UP_LEFT; case "e","9" -> Direction.UP_RIGHT; case "z","1" -> Direction.DOWN_LEFT; case "x","3" -> Direction.DOWN_RIGHT;
+                default -> null;
+            };
+            if (dir == null) { System.out.println(RED + "❌ W,A,S,D,Q,E,Z,X" + R); sleep(800); continue; }
 
-            if (input.equals("k")) {
-                System.out.println(YELLOW + "\n¡Hasta luego, Neo!" + R);
-                return;
-            }
-            if (input.equals("p")) {
-                System.out.println(YELLOW + "\n⏸ Juego pausado. Presiona Enter para continuar..." + R);
-                scanner.nextLine();
-                continue;
-            }
-
-            Direction dir = parseDirection(input);
-            if (dir == null) {
-                System.out.println(RED + "❌ Dirección inválida. Usa: W,A,S,D,Q,E,Z,X" + R);
-                sleep(1000);
-                continue;
-            }
-
-            GameState result = engine.processTurn(dir);
-            if (!result.status().equals("PLAYING")) {
-                render();
-                showResult(result.status());
-                return;
-            }
+            GameState r = engine.processTurn(dir);
+            if (!r.status().equals("PLAYING")) { render(); result(r.status()); return; }
         }
     }
 
-    private static void runSimulation() {
-        System.out.println();
-        System.out.println(BOLD + CYAN + "🤖 MODO SIMULACIÓN" + R);
-        System.out.println("  Neo usa " + GREEN + "A*" + R + " para buscar el teléfono más cercano.");
-        System.out.println("  Los Agentes usan " + RED + "BFS" + R + " para perseguir a Neo.");
-        System.out.println("  Presiona " + YELLOW + "K" + R + " para salir, " + YELLOW + "Enter" + R + " para avanzar un turno\n");
-        System.out.println(YELLOW + "Presiona Enter para iniciar..." + R);
-        try { scanner.nextLine(); } catch (Exception e) { }
+    private static void simLoop() {
+        System.out.println(BOLD + CYAN + "\n🤖 SIMULACIÓN" + R + "  Neo=A* | Agentes=BFS" + YELLOW + "\nEnter..." + R);
+        try { scanner.nextLine(); } catch (Exception e) {}
 
         while (true) {
             render();
+            var state = engine.getState();
+            if (!state.status().equals("PLAYING")) { result(state.status()); return; }
 
-            GameState state = engine.getState();
-            if (!state.status().equals("PLAYING")) {
-                showResult(state.status());
-                return;
-            }
-
-            System.out.print("\n" + CYAN + "[Enter=avanzar  |  A=auto  |  K=salir]: " + R);
-            String input = scanner.nextLine().trim().toLowerCase();
-
-            if (input.equals("k")) {
-                System.out.println(YELLOW + "\n¡Hasta luego, Neo!" + R);
-                return;
-            }
-
-            if (input.equals("a")) {
-                runAutoSimulation();
-                return;
-            }
+            System.out.print(CYAN + "[Enter=paso | A=auto | K=salir]: " + R);
+            String in = scanner.nextLine().trim().toLowerCase();
+            if (in.equals("k")) { System.out.println(YELLOW + "Adiós." + R); return; }
+            if (in.equals("a")) { autoSim(); return; }
 
             Direction dir = engine.computeAutoDirection();
-            if (dir == null) {
-                System.out.println(RED + "❌ Neo no encuentra camino al teléfono." + R);
-                return;
-            }
+            if (dir == null) { System.out.println(RED + "Neo sin ruta." + R); return; }
 
-            GameState result = engine.processTurn(dir);
-            if (!result.status().equals("PLAYING")) {
-                render();
-                showResult(result.status());
-                return;
-            }
+            var r = engine.processTurn(dir);
+            if (!r.status().equals("PLAYING")) { render(); result(r.status()); return; }
         }
     }
 
-    private static void runAutoSimulation() {
-        int delay = 400;
-        System.out.println(CYAN + "\n▶ Auto-simulación iniciada (cada " + delay + "ms)" + R);
-        System.out.println("  Presiona " + YELLOW + "K" + R + " para detener\n");
+    private static void autoSim() {
+        System.out.println(CYAN + "\n▶ Auto (K=detener)" + R);
         sleep(1000);
-
         while (true) {
             render();
-
-            GameState state = engine.getState();
-            if (!state.status().equals("PLAYING")) {
-                showResult(state.status());
-                return;
-            }
+            var state = engine.getState();
+            if (!state.status().equals("PLAYING")) { result(state.status()); return; }
 
             Direction dir = engine.computeAutoDirection();
-            if (dir == null) {
-                System.out.println(RED + "\n❌ Neo no encuentra camino al teléfono." + R);
-                return;
-            }
+            if (dir == null) { System.out.println(RED + "Neo sin ruta." + R); return; }
 
-            GameState result = engine.processTurn(dir);
-            if (!result.status().equals("PLAYING")) {
-                render();
-                showResult(result.status());
-                return;
-            }
+            var r = engine.processTurn(dir);
+            if (!r.status().equals("PLAYING")) { render(); result(r.status()); return; }
 
-            try {
-                if (System.in.available() > 0) {
-                    char c = (char) System.in.read();
-                    if (c == 'k' || c == 'K') {
-                        System.out.println(YELLOW + "\n⏹ Simulación detenida." + R);
-                        return;
-                    }
-                }
-            } catch (java.io.IOException e) {
-                // ignore
-            }
-
-            sleep(delay);
+            try { if (System.in.available() > 0 && Character.toLowerCase((char)System.in.read()) == 'k') {
+                System.out.println(YELLOW + "Detenido." + R); return; }
+            } catch (java.io.IOException e) {}
+            sleep(400);
         }
     }
 
     private static void render() {
-        System.out.print(CLEAR);
+        System.out.print(CLS);
         GameState state = engine.getState();
         char[][] grid = state.board();
-        int rows = grid.length;
-        int cols = rows > 0 ? grid[0].length : 0;
+        int rows = grid.length, cols = rows > 0 ? grid[0].length : 0;
 
-        System.out.println(BOLD + CYAN + "  MATRIX - EL ESCAPE" + R);
-        String modeLabel = state.mode().equals("SIMULATION") ? "🤖 SIMULACIÓN" : "🎮 JUGABLE";
-        String statusColor = state.status().equals("PLAYING") ? GREEN : RED;
-        System.out.println("  " + modeLabel + "  |  Turno: " + state.turn()
-            + "  |  Estado: " + statusColor + state.status() + R + "\n");
+        System.out.println(BOLD + CYAN + "  MATRIX" + R + "  " + (state.mode().equals("SIMULATION") ? "🤖" : "🎮")
+            + "  Turno: " + state.turn() + "  " + (state.status().equals("PLAYING") ? GREEN : RED) + state.status() + R);
 
-        System.out.print("     ");
-        for (int c = 0; c < cols; c++) {
-            System.out.print(GRAY + (c % 10) + " " + R);
-        }
-        System.out.println();
-        System.out.println();
+        System.out.print("     "); IntStream.range(0, cols).forEach(c -> System.out.print(GRAY + c % 10 + " " + R));
+        System.out.println("\n");
 
-        for (int r = 0; r < rows; r++) {
-            System.out.print(GRAY + (r % 10) + "    " + R);
-            for (int c = 0; c < cols; c++) {
+        IntStream.range(0, rows).forEach(r -> {
+            System.out.print(GRAY + r % 10 + "    " + R);
+            IntStream.range(0, cols).forEach(c -> {
                 char cell = grid[r][c];
-                switch (cell) {
-                    case 'N' -> System.out.print(GREEN + BOLD + "N " + R);
-                    case 'A' -> System.out.print(RED + BOLD + "A " + R);
-                    case 'T' -> System.out.print(BLUE + BOLD + "T " + R);
-                    case '#' -> System.out.print(GRAY + "# " + R);
-                    default  -> System.out.print(GRAY + ". " + R);
-                }
-            }
+                System.out.print(switch (cell) {
+                    case 'N' -> GREEN + BOLD + "N "; case 'A' -> RED + BOLD + "A ";
+                    case 'T' -> BLUE + BOLD + "T "; case '#' -> GRAY + "# "; default -> GRAY + ". ";
+                } + R);
+            });
             System.out.println();
-        }
+        });
 
-        System.out.println("\n  " + GREEN + "N" + R + "=Neo  "
-            + RED + "A" + R + "=Agente  "
-            + BLUE + "T" + R + "=Teléfono  "
-            + GRAY + "#" + R + "=Muro");
+        var positions = IntStream.range(0, rows).boxed()
+            .flatMap(r -> IntStream.range(0, cols).mapToObj(c -> new AbstractMap.SimpleEntry<>(grid[r][c], new int[]{r, c})))
+            .collect(Collectors.groupingBy(Map.Entry::getKey,
+                Collectors.mapping(e -> e.getValue(), Collectors.toList())));
 
-        Position neoPos = null;
-        java.util.List<Position> agentPositions = null;
-        java.util.List<Position> phonePositions = null;
-        try {
-            neoPos = findNeoPos(grid);
-            agentPositions = findAllPositions(grid, 'A');
-            phonePositions = findAllPositions(grid, 'T');
-        } catch (Exception e) {}
+        String neoPos = positions.getOrDefault('N', List.of()).stream().findFirst()
+            .map(p -> "(" + p[0] + "," + p[1] + ")").orElse("?");
+        String phonePos = positions.getOrDefault('T', List.of()).stream().findFirst()
+            .map(p -> "(" + p[0] + "," + p[1] + ")").orElse("?");
+        String agentStr = positions.getOrDefault('A', List.of()).stream()
+            .map(p -> "(" + p[0] + "," + p[1] + ")").collect(Collectors.joining(" "));
 
-        if (neoPos != null) {
-            System.out.println("\n  " + GREEN + "Neo:     (" + neoPos.row() + "," + neoPos.col() + ")" + R);
-        }
-        if (phonePositions != null && !phonePositions.isEmpty()) {
-            System.out.println("  " + BLUE + "Teléfono: (" + phonePositions.get(0).row() + "," + phonePositions.get(0).col() + ")" + R);
-        }
-        if (agentPositions != null && !agentPositions.isEmpty()) {
-            StringBuilder sb = new StringBuilder("  " + RED + "Agentes:");
-            for (var p : agentPositions) sb.append(" (").append(p.row()).append(",").append(p.col()).append(")");
-            System.out.println(sb.toString() + R);
-        }
+        System.out.println("\n  " + GREEN + "N" + R + "=Neo  " + RED + "A" + R + "=Agente  " + BLUE + "T" + R + "=Teléfono  " + GRAY + "#" + R + "=Muro");
+        System.out.println("  " + GREEN + "Neo: " + neoPos + R + "  " + BLUE + "Tel: " + phonePos + R + "  " + RED + "Agentes:" + agentStr + R);
     }
 
-    private static Position findNeoPos(char[][] grid) {
-        for (int r = 0; r < grid.length; r++)
-            for (int c = 0; c < grid[r].length; c++)
-                if (grid[r][c] == 'N') return new Position(r, c);
-        return null;
-    }
-
-    private static java.util.List<Position> findAllPositions(char[][] grid, char target) {
-        java.util.List<Position> list = new java.util.ArrayList<>();
-        for (int r = 0; r < grid.length; r++)
-            for (int c = 0; c < grid[r].length; c++)
-                if (grid[r][c] == target) list.add(new Position(r, c));
-        return list;
-    }
-
-    private static void showResult(String status) {
-        System.out.println();
-        if (status.equals("NEO_WINS")) {
-            System.out.println(BOLD + GREEN + "  🏆  ¡NEO HA ESCAPADO!  🏆" + R);
-            System.out.println(GREEN + "  Neo llegó al teléfono y despertó de la Matrix." + R);
-        } else {
-            System.out.println(BOLD + RED + "  💀  LOS AGENTES GANARON  💀" + R);
-            System.out.println(RED + "  Neo fue capturado. La simulación continúa..." + R);
-        }
-
-        System.out.print("\n" + YELLOW + "¿Jugar de nuevo? (s/n): " + R);
-        String input = scanner.nextLine().trim().toLowerCase();
-        if (input.equals("s")) {
-            main(new String[]{});
-        } else {
-            System.out.println(CYAN + "\n¡Gracias por jugar Matrix - El Escape!" + R);
-            System.exit(0);
-        }
-    }
-
-    private static Direction parseDirection(String input) {
-        return switch (input) {
-            case "w", "8" -> Direction.UP;
-            case "s", "2" -> Direction.DOWN;
-            case "a", "4" -> Direction.LEFT;
-            case "d", "6" -> Direction.RIGHT;
-            case "q", "7" -> Direction.UP_LEFT;
-            case "e", "9" -> Direction.UP_RIGHT;
-            case "z", "1" -> Direction.DOWN_LEFT;
-            case "x", "3" -> Direction.DOWN_RIGHT;
-            default -> null;
-        };
-    }
-
-    private static void pressEnter() {
-        System.out.print(YELLOW + "Presiona Enter para continuar..." + R);
-        scanner.nextLine();
+    private static void result(String s) {
+        System.out.println(s.equals("NEO_WINS")
+            ? BOLD + GREEN + "\n  🏆 NEO ESCAPÓ 🏆" + R
+            : BOLD + RED + "\n  💀 AGENTES GANARON 💀" + R);
+        System.out.print(YELLOW + "¿Otra? (s/n): " + R);
+        if (scanner.nextLine().trim().equalsIgnoreCase("s")) main(new String[]{});
+        else System.out.println(CYAN + "Gracias." + R);
     }
 
     private static void sleep(long ms) {
         try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
-
-    private record Position(int row, int col) {}
 }

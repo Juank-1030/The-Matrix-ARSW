@@ -9,11 +9,7 @@ import java.util.concurrent.*;
 
 public class GameEngine {
 
-    public record GameConfig(
-        int rows, int cols,
-        int agentCount, int phoneCount, int wallCount,
-        String mode
-    ) {}
+    public record GameConfig(int rows, int cols, int agentCount, int phoneCount, int wallCount, String mode) {}
 
     public enum GameStatus { PLAYING, NEO_WINS, AGENTS_WIN }
 
@@ -29,57 +25,40 @@ public class GameEngine {
     private Board board;
     private GameConfig config;
     private volatile GameStatus status;
-    private final ExecutorService threadPool = Executors.newCachedThreadPool();
+    private ExecutorService threadPool = Executors.newCachedThreadPool();
     private final PathFinder.BFS bfs = new PathFinder.BFS();
     private final PathFinder.AStar astar = new PathFinder.AStar();
     private int turn = 0;
 
     public synchronized GameState start(GameConfig cfg) {
+        if (threadPool.isShutdown())
+            threadPool = Executors.newCachedThreadPool();
         this.config = cfg;
         this.status = GameStatus.PLAYING;
         this.turn = 0;
-
         Board.reset(cfg.rows(), cfg.cols());
         board = Board.getInstance(cfg.rows(), cfg.cols());
         placeEntities();
-
         return getState();
+    }
+
+    private void place(char type, int count, Random rand, List<Position> occupied) {
+        for (int i = 0; i < count; i++) {
+            Position pos;
+            do { pos = new Position(rand.nextInt(config.rows()), rand.nextInt(config.cols())); }
+            while (occupied.contains(pos));
+            board.setCell(pos.row(), pos.col(), type);
+            occupied.add(pos);
+        }
     }
 
     private void placeEntities() {
         Random rand = new Random();
         List<Position> occupied = new ArrayList<>();
-
-        Position neoPos = randomFreePosition(rand, occupied);
-        board.setCell(neoPos.row(), neoPos.col(), 'N');
-        occupied.add(neoPos);
-
-        for (int i = 0; i < config.phoneCount(); i++) {
-            Position phonePos = randomFreePosition(rand, occupied);
-            board.setCell(phonePos.row(), phonePos.col(), 'T');
-            occupied.add(phonePos);
-        }
-
-        for (int i = 0; i < config.agentCount(); i++) {
-            Position agentPos = randomFreePosition(rand, occupied);
-            board.setCell(agentPos.row(), agentPos.col(), 'A');
-            occupied.add(agentPos);
-        }
-
-        for (int i = 0; i < config.wallCount(); i++) {
-            Position wallPos = randomFreePosition(rand, occupied);
-            board.setCell(wallPos.row(), wallPos.col(), '#');
-            occupied.add(wallPos);
-        }
-    }
-
-    private Position randomFreePosition(Random rand, List<Position> occupied) {
-        int rows = config.rows(), cols = config.cols();
-        Position pos;
-        do {
-            pos = new Position(rand.nextInt(rows), rand.nextInt(cols));
-        } while (occupied.contains(pos));
-        return pos;
+        place('N', 1, rand, occupied);
+        place('T', config.phoneCount(), rand, occupied);
+        place('A', config.agentCount(), rand, occupied);
+        place('#', config.wallCount(), rand, occupied);
     }
 
     public synchronized GameState processTurn(Direction dir) {
@@ -88,14 +67,9 @@ public class GameEngine {
         Position neoPos = board.findNeoPosition();
         if (neoPos == null) return getState();
 
-        Position newNeoPos = new Position(
-            neoPos.row() + dir.dr,
-            neoPos.col() + dir.dc
-        );
-
+        Position newNeoPos = new Position(neoPos.row() + dir.dr, neoPos.col() + dir.dc);
         if (!board.isValidPosition(newNeoPos)) return getState();
 
-        // Verificar si Neo llegó a un teléfono ANTES de sobrescribir la celda
         boolean reachedPhone = board.getCell(newNeoPos.row(), newNeoPos.col()) == 'T';
 
         board.setCell(neoPos.row(), neoPos.col(), '.');
@@ -107,41 +81,42 @@ public class GameEngine {
             return getState();
         }
 
-        List<Position> agentPositions = board.findAgentPositions();
-        List<Future<Boolean>> futures = new ArrayList<>();
-
-        for (Position agentPos : agentPositions) {
-            futures.add(threadPool.submit(() -> {
-                synchronized (board) {
-                    Position currentNeoPos = board.findNeoPosition();
-                    if (currentNeoPos == null) return false;
-                    List<Position> path = bfs.findPath(board, agentPos, currentNeoPos);
-
-                    if (path.size() > 1) {
-                        Position nextStep = path.get(1);
-                        board.setCell(agentPos.row(), agentPos.col(), '.');
-                        board.setCell(nextStep.row(), nextStep.col(), 'A');
-                        return nextStep.equals(currentNeoPos);
-                    }
-                    return false;
-                }
-            }));
-        }
-
-        try {
-            for (Future<Boolean> f : futures) {
-                if (f.get()) {
-                    status = GameStatus.AGENTS_WIN;
-                    threadPool.shutdownNow();
-                    return getState();
-                }
-            }
-        } catch (Exception e) {
-            Thread.currentThread().interrupt();
+        if (moveAgents()) {
+            status = GameStatus.AGENTS_WIN;
+            threadPool.shutdownNow();
+            return getState();
         }
 
         turn++;
         return getState();
+    }
+
+    private boolean moveAgents() {
+        List<Future<Boolean>> futures = board.findAgentPositions().stream()
+            .map(agentPos -> threadPool.submit(() -> moveSingleAgent(agentPos)))
+            .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+
+        try {
+            for (Future<Boolean> f : futures)
+                if (f.get()) return true;
+        } catch (Exception e) { Thread.currentThread().interrupt(); }
+        return false;
+    }
+
+    private boolean moveSingleAgent(Position agentPos) {
+        synchronized (board) {
+            Position currentNeoPos = board.findNeoPosition();
+            if (currentNeoPos == null) return false;
+            List<Position> path = bfs.findPath(board, agentPos, currentNeoPos);
+            if (path.size() > 1) {
+                Position nextStep = path.get(1);
+                if (board.getCell(nextStep.row(), nextStep.col()) == 'T') return false;
+                board.setCell(agentPos.row(), agentPos.col(), '.');
+                board.setCell(nextStep.row(), nextStep.col(), 'A');
+                return nextStep.equals(currentNeoPos);
+            }
+            return false;
+        }
     }
 
     public Direction computeAutoDirection() {
@@ -160,22 +135,15 @@ public class GameEngine {
 
         int dr = path.get(1).row() - neoPos.row();
         int dc = path.get(1).col() - neoPos.col();
-        for (Direction d : Direction.values()) {
-            if (d.dr == dr && d.dc == dc) return d;
-        }
-        return null;
+        return Arrays.stream(Direction.values())
+            .filter(d -> d.dr == dr && d.dc == dc)
+            .findFirst()
+            .orElse(null);
     }
 
     public GameState getState() {
-        return new GameState(
-            board.cloneGrid(),
-            status.name(),
-            turn,
-            config != null ? config.mode() : "NONE"
-        );
+        return new GameState(board.cloneGrid(), status.name(), turn, config != null ? config.mode() : "NONE");
     }
 
-    public GameStatus getStatus() {
-        return status;
-    }
+    public GameStatus getStatus() { return status; }
 }
